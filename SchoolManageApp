@@ -1,0 +1,443 @@
+*** Models
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using System.ComponentModel.DataAnnotations;
+
+namespace StudentApplication.Models
+{
+    public class StandardModel
+    {
+        [Key]
+        public int StaId { get; set; }
+
+        [Required(ErrorMessage = "Enter Title")]
+        public string StaTitle { get; set; }
+
+        [Required(ErrorMessage = "Enter Max Capacity")]
+        public int MaxCapacity { get; set; }
+        public ICollection<StudentModel> Students { get; set; }
+
+    }
+}
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using System.ComponentModel.DataAnnotations;
+
+namespace StudentApplication.Models
+{
+    public class StudentModel
+    {
+        [Key]
+        public int StuId { get; set; }
+
+        [Required(ErrorMessage = "Enter Name")]
+        public string StuName { get; set; }
+
+        [Required(ErrorMessage = "Enter Age")]
+        public int StuAge { get; set; }
+        
+        // Foreign key
+        public int StaId { get; set; } 
+        
+        public StandardModel Standard { get; set; }
+
+    }
+}
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace StudentApplication.Models
+{
+    public class StandardViewIndex
+    {
+        public int StaId { get; set; }
+        public string Title { get; set; }
+        public int Capacity { get; set; }
+        public int Slots { get; set; }
+        
+    }
+}
+
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace StudentApplication.Models
+{
+    public class StudentViewCreate
+    {
+        
+        public int StuId { get; set; }
+
+        [Required(ErrorMessage = "Enter Name")]
+        public string StuName { get; set; }
+
+        [Required(ErrorMessage = "Enter Age")]
+        public int StuAge { get; set; }
+        
+        // Foreign key
+        [Required(ErrorMessage = "Enter Current Standard")]
+        public int StaId { get; set; } 
+    }
+}
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+namespace StudentApplication.Models
+{
+    public class MyDbContext : DbContext
+    {
+        public DbSet<StandardModel> Standards { get; set; }
+        public DbSet<StudentModel> Students { get; set; }
+
+        public MyDbContext(DbContextOptions<MyDbContext> options) : base(options){
+
+        }
+        
+        protected override void OnModelCreating(ModelBuilder modelBuilder){
+            base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<StudentModel>()
+            .HasOne<StandardModel>(i => i.Standard)
+            .WithMany(i => i.Students)
+            .HasForeignKey(i => i.StaId);
+
+            modelBuilder.Entity<StandardModel>().HasData(
+                new StandardModel(){
+                    StaId = 1,
+                    StaTitle = "1st Standard",
+                    MaxCapacity = 2
+                },
+                new StandardModel(){
+                    StaId = 2,
+                    StaTitle = "2nd Standard",
+                    MaxCapacity = 23
+                }
+            );
+
+            modelBuilder.Entity<StudentModel>().HasData(
+                new StudentModel(){
+                    StuId = 1,
+                    StuName = "Jayesh",
+                    StuAge = 23,
+                    StaId = 1
+                },
+                new StudentModel(){
+                    StuId = 2,
+                    StuName = "Alex Smith",
+                    StuAge = 24,
+                    StaId = 2
+                }
+            );
+
+
+        }
+
+    }
+}
+----------------------------------------------------------------------------------
+*** Controllers
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using StudentApplication.Models;
+
+namespace StudentApplication.Controllers
+{
+ 
+    public class StandardController : Controller
+    {
+        private readonly MyDbContext ctx;
+        public StandardController(MyDbContext context){
+            ctx = context;
+        }
+
+        public IActionResult Index()
+        {
+            List<StandardViewIndex> li = new List<StandardViewIndex>();
+            List<StandardModel> res = ctx.Standards.Include(i => i.Students).ToList();
+            foreach (var i in res)
+            {
+                StandardViewIndex obj = new StandardViewIndex();
+                obj.StaId = i.StaId;
+                obj.Title = i.StaTitle;
+                obj.Capacity = i.MaxCapacity;
+                obj.Slots = i.MaxCapacity - i.Students.Count;
+                li.Add(obj);
+            }
+            return View(li);
+        }
+
+         public IActionResult Create()
+         {
+
+            return View();
+         }
+         
+         [HttpPost]
+         public IActionResult Create(StandardModel model)
+         {
+            ctx.Standards.Add(model);
+            ctx.SaveChanges();
+            return RedirectToAction("Index");
+         }
+
+         public IActionResult Delete(int id)
+         {
+            Console.WriteLine(id);
+            var standard = ctx.Standards.Find(id);
+            if(standard == null){
+                return NotFound();
+            }
+            ctx.Remove(standard);
+            ctx.SaveChanges();
+            return RedirectToAction("Index");
+         }
+
+    }
+}
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using StudentApplication.Models;
+
+namespace StudentApplication.Controllers
+{
+    
+    public class StudentController : Controller
+    {
+        private readonly MyDbContext ctx;
+        public StudentController(MyDbContext context){
+            ctx = context;
+        }
+
+        public IActionResult Index()
+        {
+            List<StudentModel> studentModels = ctx.Students.ToList();
+            return View(studentModels);
+        }
+
+        
+        public IActionResult Create(int id)
+        {
+            StudentModel temp = new StudentModel();
+            temp.StaId = id;
+            return View(temp);
+        }
+        
+        [HttpPost]
+        public IActionResult Create(StudentModel model)
+        {
+            ctx.Students.Add(model);
+            ctx.SaveChanges();
+            return RedirectToAction("Index");
+        }
+
+
+
+       public IActionResult Edit(int id)
+       { 
+            var student = ctx.Students.Find(id);
+            if(student == null){
+                return NotFound();
+            }
+       
+            StudentModel studentModel = new StudentModel{
+                StuId = student.StuId,
+                StuName = student.StuName,
+                StuAge = student.StuAge,
+                StaId = student.StaId,
+            };
+            return View(studentModel);
+        }
+
+        [HttpPost]
+        public IActionResult Edit(StudentModel model)
+        { 
+            var student = ctx.Students.Find(model.StuId);
+            if(student == null){
+                return NotFound();
+            }
+            student.StuName = model.StuName; 
+            student.StuAge = model.StuAge; 
+            student.StaId = model.StaId; 
+            ctx.SaveChanges();
+            return RedirectToAction("Index"); 
+        }
+
+        public IActionResult Delete(int id)
+       { 
+            var student = ctx.Students.Find(id);
+            if(student == null){
+                return NotFound();
+            }
+            ctx.Remove(student);
+            ctx.SaveChanges();
+            return RedirectToAction("Index"); 
+        }
+       
+    }
+}
+
+----------------------------------------------------------------------------------
+*** Views
+
+--- Standard
+@model List<StandardViewIndex>;
+
+<h2>Standard data (@Model.Count())</h2>
+<a asp-action="Create" class="btn btn-dark">Add Standard</a>
+<hr>
+
+<table class="table">
+    <thead>
+        <tr>
+            <td>Standard Id</td>
+            <td>Title</td>
+            <td>Max Capacity</td>
+            <td>Slots</td>
+            <td>Action</td>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var i in Model)
+        {
+          <tr>
+            <td>@i.StaId</td>
+            <td>@i.Title</td>
+            <td>@i.Capacity</td>
+            <td>@i.Slots</td>
+                <td>
+                    @if(@i.Slots > 0){
+                    <a asp-controller="Student" asp-action="Create" asp-route-id="@i.StaId" class="btn btn-primary">Add Student</a>
+                    <a asp-action="Edit" asp-route-id="@i.StaId" class="btn btn-warning">Edit</a>
+                    <a asp-action="Delete" asp-route-id="@i.StaId" class="btn btn-danger">Delete</a>
+                    }else{
+                <p class="text-danger">Seats filled...</p>
+                }
+                </td>         
+            </tr>
+        }
+    </tbody>
+</table>
+
+@model StandardModel;
+
+<form  method="post">    
+    <div class="form-group">
+        <label for="StaTitle">Standard Title:</label>
+        <input type="text" asp-for="StaTitle" class="form-control">
+        <span asp-validation-for="StaTitle" class="text-danger"></span>
+    </div>
+    <br>
+    <div class="form-group">
+        <label for="MaxCapacity">Standard Max - Capacity:</label>
+        <input type="number" asp-for="MaxCapacity" class="form-control">
+        <span asp-validation-for="MaxCapacity" class="text-danger"></span>
+    </div>
+         
+    <br>
+    <button type="submit" class="btn btn-primary">Submit</button>
+</form>
+
+--- Student
+@model List<StudentModel>;
+<h2>Student data (@Model.Count())</h2>
+<table class="table">
+    <thead>
+        <tr>
+            <td>Id</td>
+            <td>Name</td>
+            <td>Age</td>
+            <td>Current Standard</td>
+            <td>Action</td>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var i in Model)
+        {
+          <tr>
+            <td>@i.StuId</td>
+            <td>@i.StuName</td>
+            <td>@i.StuAge</td>
+            <td>@i.StaId</td>
+            <td>
+               <a asp-action="Edit" asp-route-id="@i.StuId" class="btn btn-warning">Edit</a>
+               <a asp-action="Delete" asp-route-id="@i.StuId" class="btn btn-danger">Delete</a>
+            </td>
+          </tr>
+        }
+    </tbody>
+</table>
+
+@model StudentModel;
+
+<h5>Enrolling for current standard : @Model.StaId</p>
+<form  method="post">    
+    <div class="form-group">
+        <label for="StuName">Student name:</label>
+        <input type="text" asp-for="StuName" class="form-control">
+        <span asp-validation-for="StuName" class="text-danger"></span>
+    </div>
+    <br>
+    <div class="form-group">
+        <label for="StuName">Student age:</label>
+        <input type="number" asp-for="StuAge" class="form-control">
+        <span asp-validation-for="StuAge" class="text-danger"></span>
+    </div>
+
+        <input type="hidden" asp-for="StaId" class="form-control">
+       
+    <br>
+    <button type="submit" class="btn btn-primary">Submit</button>
+</form>
+
+@model StudentModel;
+
+<form  method="post">    
+    <div class="form-group">
+        <label for="StuName">Student name:</label>
+        <input type="text" asp-for="StuName" class="form-control">
+        <span asp-validation-for="StuName" class="text-danger"></span>
+    </div>
+    <br>
+    <div class="form-group">
+        <label for="StuName">Student age:</label>
+        <input type="number" asp-for="StuAge" class="form-control">
+        <span asp-validation-for="StuAge" class="text-danger"></span>
+    </div>
+    <br>
+    <div class="form-group">
+        <label for="StuName">Current standard:</label>
+        <input type="number" asp-for="StaId" class="form-control">
+        <span asp-validation-for="StaId" class="text-danger"></span>
+    </div>
+        <input type="hidden" asp-for="StuId" class="form-control">
+    <br>
+    <button type="submit" class="btn btn-primary">Save</button>
+</form>
