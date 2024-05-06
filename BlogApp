@@ -1,0 +1,444 @@
+*** Models
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using System.ComponentModel.DataAnnotations;
+
+namespace BlogApp.Models
+{
+    public class BlogModel
+    {
+        [Key]
+        public int BlogId { get; set; }
+        public string BlogTitle { get; set; }
+        public DateTime PostedDateTime { get; set; }  = DateTime.Now;
+        public string BlogText { get; set; }
+        public ICollection<CommentModel> Comments { get; set; }
+
+    }
+}
+
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using System.ComponentModel.DataAnnotations;
+
+namespace BlogApp.Models
+{
+    public class CommentModel
+    {
+        [Key]
+        public int CommentId { get; set; }
+        public string CommentTitle { get; set; }
+        public string CommentText { get; set; }
+        public int BlogId { get; set; }
+        public BlogModel Blog { get; set; }
+    }
+}
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace BlogApp.Models
+{
+    public class BlogIndexView
+    {
+        public int BlogId { get; set; }
+        public string BlogTitle { get; set; }
+        public DateTime PostedOn { get; set; }
+        public int NumberOfComments { get; set; }
+    }
+}
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+
+namespace BlogApp.Models
+{
+    public class BlogDbContext : DbContext
+    {
+        public DbSet<BlogModel> Blogs { get; set; }
+        public DbSet<CommentModel> Comments { get; set; }
+
+        public BlogDbContext(DbContextOptions<BlogDbContext> options) : base(options){
+
+        }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<CommentModel>()
+            .HasOne<BlogModel>(i => i.Blog)
+            .WithMany(i => i.Comments)
+            .HasForeignKey(i => i.BlogId);
+
+            modelBuilder.Entity<BlogModel>().HasData(
+                new BlogModel(){
+                    BlogId = 1,
+                    BlogTitle = "Jayesh blog",
+                    PostedDateTime = new DateTime(2024,01,10,01,00,00),
+                    BlogText = "Sample testing 1"
+                },
+                new BlogModel(){
+                    BlogId = 2,
+                    BlogTitle = "Alex blog",
+                    PostedDateTime = new DateTime(2024,01,10,02,00,00),
+                    BlogText = "Sample testing 2"
+                }
+            );
+
+            modelBuilder.Entity<CommentModel>().HasData(
+                    new CommentModel(){
+                        CommentId = 1,
+                        CommentTitle = "Sample comment title 1",
+                        CommentText = "Sample comment text 1",
+                        BlogId = 1,
+                    },new CommentModel(){
+                        CommentId = 2,
+                        CommentTitle = "Sample comment title 2",
+                        CommentText = "Sample comment text 2",
+                        BlogId = 1,
+                    }
+            );
+
+
+        }
+    }
+}
+
+------------------------------------------------------------------------------------------------------
+*** Controller
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading.Tasks;
+using BlogApp.Models;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+
+namespace BlogApp.Controllers
+{
+  
+    public class BlogController : Controller
+    {
+
+        private readonly BlogDbContext ctx;
+        public BlogController(BlogDbContext context){
+            ctx = context;
+        }
+
+        public IActionResult Index()
+        {
+            List<BlogIndexView> li = new List<BlogIndexView>();
+            List<BlogModel> blogModels = ctx.Blogs.Include(i => i.Comments).ToList();
+            foreach (var i in blogModels)
+            {
+                BlogIndexView bg = new BlogIndexView();
+                bg.BlogId = i.BlogId;
+                bg.BlogTitle = i.BlogTitle;
+                bg.PostedOn = i.PostedDateTime;
+                bg.NumberOfComments = i.Comments.Count;
+                li.Add(bg);
+            }
+            return View(li);
+        }
+
+        public IActionResult Create()
+        {
+           return View();
+        }
+
+        [HttpPost]
+        public IActionResult Create(BlogModel model)
+        {
+           ctx.Blogs.Add(model);
+           ctx.SaveChanges();
+           return RedirectToAction("Index");
+        }
+
+        public IActionResult Edit(int id)
+        {
+           var blog = ctx.Blogs.Find(id);
+           if(blog == null){
+            return NotFound();
+           }
+           BlogModel blogModel = new BlogModel(){
+               BlogId = blog.BlogId,
+               BlogTitle = blog.BlogTitle,
+               PostedDateTime = blog.PostedDateTime,
+               BlogText = blog.BlogText
+           }; 
+           return View(blogModel);
+        }
+
+        [HttpPost]
+        public IActionResult Edit(BlogModel model)
+        {
+           int id = model.BlogId;
+           var blog = ctx.Blogs.Find(id);
+           if(blog == null){
+            return NotFound();
+           }
+           blog.BlogTitle = model.BlogTitle;
+           blog.PostedDateTime = model.PostedDateTime;
+           blog.BlogText = model.BlogText;
+           ctx.SaveChanges();
+           return RedirectToAction("Index");
+        }
+
+        public IActionResult Delete(int id)
+        {
+           var blog = ctx.Blogs.Find(id);
+           if(blog == null){
+            return NotFound();
+           }
+           ctx.Blogs.Remove(blog);
+           ctx.SaveChanges();
+           return RedirectToAction("Index");
+        }
+        
+    }
+}
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading.Tasks;
+using BlogApp.Models;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+
+namespace BlogApp.Controllers
+{
+  
+    public class CommentController : Controller
+    {
+        private readonly BlogDbContext ctx;
+        public CommentController(BlogDbContext context){
+            ctx = context;
+        }
+
+        public IActionResult Index()
+        {
+            List<CommentModel> li = ctx.Comments.ToList();
+            return View(li);
+        }
+
+        public IActionResult Create(int id)
+        {
+           CommentModel temp = new CommentModel();
+           temp.BlogId = id;
+           return View(temp);
+        }
+
+        [HttpPost]
+        public IActionResult Create(CommentModel model)
+        {
+           ctx.Comments.Add(model);
+           ctx.SaveChanges();
+           return RedirectToAction("Index");
+        }
+
+        public IActionResult Edit(int id)
+        {
+           var comment = ctx.Comments.Find(id);
+           if(comment == null){
+            return NotFound();
+           }
+           CommentModel commentModel = new CommentModel(){
+               CommentId = comment.CommentId,
+               CommentTitle = comment.CommentTitle,
+               CommentText = comment.CommentText,
+               BlogId = comment.BlogId
+           }; 
+           return View(commentModel);
+        }
+
+        [HttpPost]
+        public IActionResult Edit(CommentModel model)
+        {
+           int id = model.CommentId;
+           var comment = ctx.Comments.Find(id);
+           if(comment == null){
+            return NotFound();
+           }
+           comment.CommentTitle = model.CommentTitle;
+           comment.CommentText = model.CommentText;
+           comment.BlogId = model.BlogId;
+           ctx.SaveChanges();
+           return RedirectToAction("Index");
+        }
+
+        public IActionResult Delete(int id)
+        {
+           var comment = ctx.Comments.Find(id);
+           if(comment == null){
+            return NotFound();
+           }
+           ctx.Comments.Remove(comment);
+           ctx.SaveChanges();
+           return RedirectToAction("Index");
+        }
+
+        
+    }
+}
+------------------------------------------------------------------------------------------------------
+*** Views
+
+@model BlogModel;
+
+<form  method="post" style="width: 40vw;">     
+    <div class="form-group">
+        <label for="BlogTitle">Blog Title:</label>
+        <input type="text" asp-for="BlogTitle" class="form-control">
+    </div>
+    <br>
+    <div class="form-group">
+        <label for="BlogText">Blog Text:</label>
+        <textarea asp-for="BlogText" cols="100" rows="5" class="form-control"></textarea>
+    </div>
+    <input type="hidden" asp-for="PostedDateTime">
+    <br>
+    <button type="submit" class="btn btn-primary">Submit</button>
+</form>
+
+---
+@model BlogModel;
+
+<form  method="post" style="width: 40vw;">     
+    <div class="form-group">
+        <label for="BlogTitle">Blog Title:</label>
+        <input type="text" asp-for="BlogTitle" class="form-control">
+    </div>
+    <br>
+    <div class="form-group">
+        <label for="BlogText">Blog Text:</label>
+        <textarea asp-for="BlogText" cols="100" rows="5" class="form-control"></textarea>
+    </div>
+     <br>
+    <div class="form-group">
+        <label for="BlogText">Blog Date & Time:</label>
+        <input type="PostedDateTime" asp-for="PostedDateTime" class="form-control">
+    </div>
+     <input type="hidden" asp-for="BlogId" class="form-control">
+        
+    <br>
+    <button type="submit" class="btn btn-primary">Save</button>
+</form>
+---
+@model List<BlogIndexView>;
+<h2>Blogs (@Model.Count())</h2>
+<a asp-controller="Blog" asp-action="Create"  class="btn btn-dark">Add Blog +</a>
+<a asp-controller="Comment" asp-action="Index"  class="btn btn-dark">Check Comments</a>
+<hr>
+
+<table class="table">
+    <thead>
+        <tr>
+            <td>Blog-Id</td>
+            <td>Title</td>
+            <td>PostedOn</td>
+            <td>No of Comments</td>
+            <td>Action</td>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var i in Model)
+        {
+          <tr>
+            <td>@i.BlogId</td>
+            <td>@i.BlogTitle</td>
+            <td>@i.PostedOn</td>
+            <td>@i.NumberOfComments</td>
+               <td>   
+                    <a asp-controller="Comment" asp-action="Create" asp-route-id="@i.BlogId" class="btn btn-primary">Add Comment</a>
+                    <a asp-action="Edit" asp-route-id="@i.BlogId" class="btn btn-warning">Edit</a>
+                    <a asp-action="Delete" asp-route-id="@i.BlogId" class="btn btn-danger">Delete</a>
+                </td>         
+            </tr>
+            }
+    </tbody>
+</table>
+---
+@model CommentModel;
+
+<form  method="post" style="width: 40vw;">     
+    <div class="form-group">
+        <label for="CommentTitle">Comment Title:</label>
+        <input type="text" asp-for="CommentTitle" class="form-control">
+    </div>
+    <br>
+    <div class="form-group">
+        <label for="CommentText">Comment Text:</label>
+        <textarea asp-for="CommentText" cols="100" rows="5" class="form-control"></textarea>
+    </div>
+    <input type="hidden" asp-for="BlogId" class="form-control">    
+    <br>
+    <button type="submit" class="btn btn-primary">Submit</button>
+</form>
+
+---
+@model CommentModel;
+
+<form  method="post" style="width: 40vw;">    
+    <div class="form-group">
+        <label for="CommentTitle">Comment Title:</label>
+        <input type="text" asp-for="CommentTitle" class="form-control">
+    </div>
+    <br>
+    <div class="form-group">
+        <label for="CommentText">Comment Text:</label>
+        <textarea asp-for="CommentText" cols="100" rows="5" class="form-control"></textarea>
+    </div>
+    <input type="hidden" asp-for="CommentId" class="form-control">  
+    <input type="hidden" asp-for="BlogId" class="form-control">    
+    <br>
+    <button type="submit" class="btn btn-primary">Save</button>
+</form>
+
+---
+@model List<CommentModel>;
+<h2>Comments (@Model.Count())</h2>
+<hr>
+
+<table class="table">
+    <thead>
+        <tr>
+            <td>Comment-Id</td>
+            <td>Title</td>
+            <td>CommentText</td>
+            <td>Blog-Id</td>
+            <td>Action</td>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var i in Model)
+        {
+          <tr>
+            <td>@i.CommentId</td>
+            <td>@i.CommentTitle</td>
+            <td>@i.CommentText</td>
+            <td>@i.BlogId</td>
+               <td>   
+                    <a asp-action="Edit" asp-route-id="@i.CommentId" class="btn btn-warning">Edit</a>
+                    <a asp-action="Delete" asp-route-id="@i.CommentId" class="btn btn-danger">Delete</a>
+                </td>         
+            </tr>
+            }
+    </tbody>
+</table>
